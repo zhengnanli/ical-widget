@@ -1,0 +1,20 @@
+<resources>
+    <color name="widget_bg">#1E1E26</color>
+    <color name="widget_text">#F3F4F6</color>
+    <color name="widget_text_secondary">#A1A1AA</color>
+    <color name="widget_text_faint">#52525B</color>
+    <color name="widget_accent">#A5B4FC</color>
+    <color name="widget_chip">#312E81</color>
+    <color name="widget_today">#6366F1</color>
+    <color name="widget_on_accent">#FFFFFF</color>
+    <color name="widget_weekend">#F87171</color>
+    <color name="widget_today_label">#FB7185</color>
+    <color name="event_0">#818CF8</color>
+    <color name="event_1">#F472B6</color>
+    <color name="event_2">#38BDF8</color>
+    <color name="event_3">#34D399</color>
+    <color name="event_4">#FBBF24</color>
+    <color name="event_5">#A78BFA</color>
+    <color name="panel_start">#3730A3</color>
+    <color name="panel_end">#5B21B6</color>
+</resources>

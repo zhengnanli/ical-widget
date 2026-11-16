@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">iCal Widget</string>
+    <string name="widget_label">Calendar agenda</string>
+    <string name="widget_description">Upcoming events from your iCal subscription</string>
+    <string name="widget_title">Calendar</string>
+    <string name="no_events">No upcoming events</string>
+    <string name="refresh">Refresh</string>
+    <string name="month_widget_label">Month calendar</string>
+    <string name="month_widget_description">This month at a glance, with today highlighted</string>
+    <string name="upcoming">Upcoming</string>
+    <string name="prev_month">Previous month</string>
+    <string name="next_month">Next month</string>
+    <string name="month_simple_widget_label">Month (simple)</string>
+    <string name="month_simple_widget_description">Just the month, with today highlighted</string>
+</resources>
