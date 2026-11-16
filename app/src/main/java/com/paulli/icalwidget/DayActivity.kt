@@ -16,8 +16,16 @@ import java.time.temporal.ChronoUnit
 import java.util.Locale
 import kotlin.math.min
 
-/** A popup listing one day's events, opened by tapping a date or an event in the widgets. */
+/**
+ * A popup listing a day's events plus the next few days, opened by tapping a date or an event in
+ * the widgets.
+ */
 class DayActivity : Activity() {
+
+    companion object {
+        /** Days shown after the tapped one (empty ones are skipped). */
+        private const val FOLLOWING_DAYS = 3
+    }
 
     private var day: LocalDate = LocalDate.now()
     private lateinit var title: TextView
@@ -73,22 +81,26 @@ class DayActivity : Activity() {
         events.addView(message("Loading…"))
         Thread {
             if (CalendarRepository.ensureFresh(this)) Widgets.renderAll(this)
+            val days = 1 + FOLLOWING_DAYS
             val rows = AgendaRows.build(
-                CalendarRepository.occurrencesFrom(this, shown, 1), ZonedDateTime.now(),
-                1, DateFormat.is24HourFormat(this), from = shown, hideEnded = false,
-            ).filterIsInstance<AgendaRow.Event>()
-            runOnUiThread { if (generation == loadGeneration && !isFinishing) populate(rows) }
+                CalendarRepository.occurrencesFrom(this, shown, days), ZonedDateTime.now(),
+                days, DateFormat.is24HourFormat(this), from = shown, hideEnded = false,
+            )
+            runOnUiThread { if (generation == loadGeneration && !isFinishing) populate(shown, rows) }
         }.start()
     }
 
-    private fun populate(rows: List<AgendaRow.Event>) {
+    private fun populate(shown: LocalDate, rows: List<AgendaRow>) {
         events.removeAllViews()
-        if (rows.isEmpty()) {
-            events.addView(message("No events"))
-            return
-        }
+        // The tapped day is the popup's title, so it gets no heading; say so if it's empty.
+        if (rows.none { it is AgendaRow.Event && it.date == shown }) events.addView(message("No events"))
         val inflater = LayoutInflater.from(this)
         for (row in rows) {
+            if (row is AgendaRow.Day) {
+                if (row.date != shown) events.addView(heading(row.label))
+                continue
+            }
+            row as AgendaRow.Event
             val item = inflater.inflate(R.layout.day_event_item, events, false)
             item.findViewById<View>(R.id.item_bar).backgroundTintList = getColorStateList(Widgets.EVENT_COLOR_RES[row.colorIndex])
             item.findViewById<TextView>(R.id.item_title).text = row.title
@@ -99,6 +111,15 @@ class DayActivity : Activity() {
             }
             events.addView(item)
         }
+    }
+
+    private fun heading(text: String) = TextView(this).apply {
+        this.text = text
+        setTextColor(getColor(R.color.widget_accent))
+        textSize = 13f
+        setTypeface(typeface, android.graphics.Typeface.BOLD)
+        val dp = resources.displayMetrics.density
+        setPadding(0, (16 * dp).toInt(), 0, (2 * dp).toInt())
     }
 
     private fun message(text: String) = TextView(this).apply {
