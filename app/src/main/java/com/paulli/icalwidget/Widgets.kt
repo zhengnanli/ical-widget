@@ -8,6 +8,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.text.format.DateFormat
 import android.text.format.DateUtils
 import android.view.View
@@ -37,12 +38,18 @@ object Widgets {
         val mgr = AppWidgetManager.getInstance(ctx)
         val agenda = ids(ctx, CalendarWidgetProvider::class.java)
         val month = ids(ctx, MonthWidgetProvider::class.java)
-        for (id in agenda) mgr.updateAppWidget(id, agendaViews(ctx, id))
-        for (id in month) mgr.updateAppWidget(id, monthViews(ctx, id))
         val simple = ids(ctx, SimpleMonthWidgetProvider::class.java)
-        if (simple.isNotEmpty()) mgr.updateAppWidget(simple, simpleMonthViews(ctx))
+        val rows by lazy {
+            AgendaRows.build(
+                CalendarRepository.upcoming(ctx), java.time.ZonedDateTime.now(),
+                CalendarRepository.daysAhead(ctx), DateFormat.is24HourFormat(ctx),
+            )
+        }
+        for (id in agenda) mgr.updateAppWidget(id, agendaViews(ctx, id, rows))
+        for (id in month) mgr.updateAppWidget(id, monthViews(ctx, mgr, id, rows))
+        for (id in simple) mgr.updateAppWidget(id, simpleMonthViews(ctx, mgr, id))
         val withLists = agenda + month
-        if (withLists.isNotEmpty()) mgr.notifyAppWidgetViewDataChanged(withLists, R.id.event_list)
+        if (withLists.isNotEmpty() && Build.VERSION.SDK_INT < 31) mgr.notifyAppWidgetViewDataChanged(withLists, R.id.event_list)
         if (withLists.isNotEmpty() || simple.isNotEmpty()) scheduleMidnight(ctx)
     }
 
@@ -82,12 +89,12 @@ object Widgets {
 
     // ------------------------------------------------------------------ agenda widget
 
-    private fun agendaViews(ctx: Context, id: Int): RemoteViews {
+    private fun agendaViews(ctx: Context, id: Int, rows: List<AgendaRow>): RemoteViews {
         val portrait = RemoteViews(ctx.packageName, R.layout.widget_calendar)
         val landscape = RemoteViews(ctx.packageName, R.layout.widget_agenda_landscape)
         for (v in listOf(portrait, landscape)) {
             v.setTextViewText(R.id.status_text, statusText(ctx))
-            bindList(ctx, v, id)
+            bindList(ctx, v, id, rows)
             v.setOnClickPendingIntent(R.id.refresh_button, broadcast(ctx, CalendarWidgetProvider::class.java, ACTION_REFRESH, id))
             v.setOnClickPendingIntent(R.id.title_area, openApp(ctx))
         }
@@ -96,7 +103,7 @@ object Widgets {
 
     // ------------------------------------------------------------------ month widget
 
-    private fun monthViews(ctx: Context, id: Int): RemoteViews {
+    private fun monthViews(ctx: Context, mgr: AppWidgetManager, id: Int, rows: List<AgendaRow>): RemoteViews {
         val zone = ZoneId.systemDefault()
         val month = YearMonth.from(LocalDate.now(zone)).plusMonths(CalendarRepository.monthOffset(ctx, id).toLong())
         val (gridStart, weeks) = gridOf(month)
@@ -115,28 +122,49 @@ object Widgets {
         val reset = broadcast(ctx, MonthWidgetProvider::class.java, ACTION_THIS_MONTH, id)
         val refresh = broadcast(ctx, MonthWidgetProvider::class.java, ACTION_REFRESH, id)
 
-        fun panel(layout: Int) = RemoteViews(ctx.packageName, layout).apply {
-            fillGrid(ctx, this, month, busy)
+        // The month grid takes the full width in portrait, and 1.15 / 2.15 of it beside the list in landscape.
+        val (portraitW, landscapeW) = widthsDp(mgr, id)
+        val buttons = 3 * 36 + 8
+        fun panel(layout: Int, titleSpace: Int) = RemoteViews(ctx.packageName, layout).apply {
+            fillGrid(ctx, this, month, busy, titleSpace)
             setOnClickPendingIntent(R.id.month_title, reset)
             setOnClickPendingIntent(R.id.prev_button, prev)
             setOnClickPendingIntent(R.id.next_button, next)
             setOnClickPendingIntent(R.id.refresh_button, refresh)
         }
 
-        val portrait = panel(R.layout.widget_month)
-        val landscape = panel(R.layout.widget_month_landscape).apply {
+        val portrait = panel(R.layout.widget_month, portraitW - 24 - buttons)
+        val landscape = panel(R.layout.widget_month_landscape, ((landscapeW - 24 - 25) * 1.15 / 2.15).toInt() - buttons).apply {
             setTextViewText(R.id.status_text, statusText(ctx))
-            bindList(ctx, this, id)
+            bindList(ctx, this, id, rows)
         }
         return RemoteViews(landscape, portrait)
     }
 
     /** The plain month: always the current month, no events. */
-    private fun simpleMonthViews(ctx: Context): RemoteViews =
-        RemoteViews(ctx.packageName, R.layout.widget_month_simple).apply {
-            fillGrid(ctx, this, YearMonth.now(), busy = null)
+    private fun simpleMonthViews(ctx: Context, mgr: AppWidgetManager, id: Int): RemoteViews {
+        val (portraitW, landscapeW) = widthsDp(mgr, id)
+        fun v(width: Int) = RemoteViews(ctx.packageName, R.layout.widget_month_simple).apply {
+            fillGrid(ctx, this, YearMonth.now(), busy = null, titleSpace = width - 24 - 4)
             setOnClickPendingIntent(R.id.month_title, openApp(ctx))
         }
+        return RemoteViews(v(landscapeW), v(portraitW))
+    }
+
+    /** Widget width in dp in portrait and in landscape, as reported by the launcher (0 if unknown). */
+    private fun widthsDp(mgr: AppWidgetManager, id: Int): Pair<Int, Int> {
+        val o = mgr.getAppWidgetOptions(id)
+        return o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH) to o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH)
+    }
+
+    /** "December 2026", or "Dec 2026", or "Dec" — the longest that fits in [spaceDp] at 18sp bold. */
+    private fun monthTitle(ctx: Context, month: YearMonth, spaceDp: Int): String {
+        val locale = Locale.getDefault()
+        val options = listOf("LLLL yyyy", "LLL yyyy", "LLL").map { month.format(DateTimeFormatter.ofPattern(it, locale)) }
+        if (spaceDp <= 0) return options[0] // size unknown
+        val charDp = 18f * 0.6f * ctx.resources.configuration.fontScale
+        return options.firstOrNull { it.length * charDp <= spaceDp } ?: options.last()
+    }
 
     /** First cell of the grid (start of the week containing the 1st) and the number of week rows. */
     private fun gridOf(month: YearMonth): Pair<LocalDate, Int> {
@@ -147,12 +175,12 @@ object Widgets {
     }
 
     /** Fills a month_panel / month_panel_simple grid. Today's box is filled with the accent color. */
-    private fun fillGrid(ctx: Context, v: RemoteViews, month: YearMonth, busy: Map<LocalDate, Int>?) {
+    private fun fillGrid(ctx: Context, v: RemoteViews, month: YearMonth, busy: Map<LocalDate, Int>?, titleSpace: Int) {
         val today = LocalDate.now()
         val (gridStart, weeks) = gridOf(month)
         val firstDow = gridStart.dayOfWeek
 
-        v.setTextViewText(R.id.month_title, month.format(DateTimeFormatter.ofPattern("LLLL yyyy", Locale.getDefault())))
+        v.setTextViewText(R.id.month_title, monthTitle(ctx, month, titleSpace))
         for (i in 0 until 7) {
             val dow = firstDow.plus(i.toLong())
             v.setTextViewText(MonthIds.weekdays[i], dow.getDisplayName(TextStyle.NARROW, Locale.getDefault()))
@@ -182,13 +210,28 @@ object Widgets {
 
     // ------------------------------------------------------------------ helpers
 
+    /** One agenda list row. */
+    fun rowViews(ctx: Context, row: AgendaRow): RemoteViews = when (row) {
+        is AgendaRow.Day -> RemoteViews(ctx.packageName, R.layout.widget_item_day).apply {
+            setTextViewText(R.id.day_text, row.label)
+            setTextColorRes(ctx, this, R.id.day_text, if (row.isToday) R.color.widget_today_label else R.color.widget_accent)
+        }
+        is AgendaRow.Event -> RemoteViews(ctx.packageName, R.layout.widget_item_event).apply {
+            setTextViewText(R.id.event_title, row.title)
+            setTintRes(ctx, this, R.id.event_bar, EVENT_COLOR_RES[row.colorIndex])
+            setTextViewText(R.id.event_detail, row.detail)
+            setViewVisibility(R.id.event_detail, if (row.detail.isBlank()) View.GONE else View.VISIBLE)
+            setOnClickFillInIntent(R.id.event_root, Intent())
+        }
+    }
+
     val EVENT_COLOR_RES = intArrayOf(
         R.color.event_0, R.color.event_1, R.color.event_2, R.color.event_3, R.color.event_4, R.color.event_5,
     )
 
     /** Tints an ImageView; on Android 12+ the launcher resolves the color, so it follows theme changes live. */
     fun setTintRes(ctx: Context, views: RemoteViews, viewId: Int, colorRes: Int) {
-        if (android.os.Build.VERSION.SDK_INT >= 31) views.setColorStateList(viewId, "setImageTintList", colorRes)
+        if (Build.VERSION.SDK_INT >= 31) views.setColorStateList(viewId, "setImageTintList", colorRes)
         else views.setInt(viewId, "setColorFilter", ctx.getColor(colorRes))
     }
 
@@ -196,17 +239,28 @@ object Widgets {
 
     /** On Android 12+ the color resource is resolved by the launcher, so it follows light/dark mode live. */
     fun setTextColorRes(ctx: Context, views: RemoteViews, viewId: Int, colorRes: Int) {
-        if (android.os.Build.VERSION.SDK_INT >= 31) views.setColorStateList(viewId, "setTextColor", colorRes)
+        if (Build.VERSION.SDK_INT >= 31) views.setColorStateList(viewId, "setTextColor", colorRes)
         else views.setTextColor(viewId, ctx.getColor(colorRes))
     }
 
-    private fun bindList(ctx: Context, views: RemoteViews, id: Int) {
-        val svc = Intent(ctx, CalendarWidgetService::class.java).apply {
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-            data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME)) // unique per widget
+    /**
+     * Android 12+: the rows go inline with the update. (Android 16 converts a service-backed list into
+     * inline items itself, but holds the widget's updates back while it binds the service, which made
+     * the month arrows and refresh look dead.) Older versions use CalendarWidgetService.
+     */
+    private fun bindList(ctx: Context, views: RemoteViews, id: Int, rows: List<AgendaRow>) {
+        if (Build.VERSION.SDK_INT >= 31) {
+            val items = RemoteViews.RemoteCollectionItems.Builder().setViewTypeCount(2).setHasStableIds(false)
+            rows.forEachIndexed { i, row -> items.addItem(i.toLong(), rowViews(ctx, row)) }
+            views.setRemoteAdapter(R.id.event_list, items.build())
+        } else {
+            val svc = Intent(ctx, CalendarWidgetService::class.java).apply {
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME)) // unique per widget
+            }
+            @Suppress("DEPRECATION")
+            views.setRemoteAdapter(R.id.event_list, svc)
         }
-        @Suppress("DEPRECATION")
-        views.setRemoteAdapter(R.id.event_list, svc)
         views.setEmptyView(R.id.event_list, R.id.empty_view)
         // Item taps fill in this template; it must be mutable for the fill-in to apply.
         views.setPendingIntentTemplate(

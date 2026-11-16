@@ -3,11 +3,11 @@ package com.paulli.icalwidget
 import android.content.Context
 import android.content.Intent
 import android.text.format.DateFormat
-import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import java.time.ZonedDateTime
 
+/** List adapter for Android 8–11; Android 12+ gets its rows inline (see Widgets.bindList). */
 class CalendarWidgetService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory = Factory(applicationContext)
 
@@ -33,21 +33,7 @@ class CalendarWidgetService : RemoteViewsService() {
         override fun hasStableIds() = false
         override fun getLoadingView(): RemoteViews? = null
 
-        override fun getViewAt(position: Int): RemoteViews {
-            return when (val row = rows.getOrNull(position)) {
-                is AgendaRow.Day -> RemoteViews(ctx.packageName, R.layout.widget_item_day).apply {
-                    setTextViewText(R.id.day_text, row.label)
-                    Widgets.setTextColorRes(ctx, this, R.id.day_text, if (row.isToday) R.color.widget_today_label else R.color.widget_accent)
-                }
-                is AgendaRow.Event -> RemoteViews(ctx.packageName, R.layout.widget_item_event).apply {
-                    setTextViewText(R.id.event_title, row.title)
-                    Widgets.setTintRes(ctx, this, R.id.event_bar, Widgets.EVENT_COLOR_RES[row.colorIndex])
-                    setTextViewText(R.id.event_detail, row.detail)
-                    setViewVisibility(R.id.event_detail, if (row.detail.isBlank()) View.GONE else View.VISIBLE)
-                    setOnClickFillInIntent(R.id.event_root, Intent())
-                }
-                null -> RemoteViews(ctx.packageName, R.layout.widget_item_day)
-            }
-        }
+        override fun getViewAt(position: Int): RemoteViews =
+            rows.getOrNull(position)?.let { Widgets.rowViews(ctx, it) } ?: RemoteViews(ctx.packageName, R.layout.widget_item_day)
     }
 }

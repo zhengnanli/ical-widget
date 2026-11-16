@@ -24,6 +24,9 @@ class CalendarWidgetProvider : AppWidgetProvider() {
 /** Month widget: a month grid with today highlighted (plus the agenda list in landscape). */
 class MonthWidgetProvider : AppWidgetProvider() {
 
+    override fun onAppWidgetOptionsChanged(ctx: Context, mgr: AppWidgetManager, id: Int, newOptions: android.os.Bundle) =
+        Widgets.renderAll(ctx)
+
     override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) =
         Widgets.refreshAsync(this, ctx, force = false)
 
@@ -48,6 +51,9 @@ class MonthWidgetProvider : AppWidgetProvider() {
 
 /** Plain month grid: current month, today highlighted, no events. */
 class SimpleMonthWidgetProvider : AppWidgetProvider() {
+
+    override fun onAppWidgetOptionsChanged(ctx: Context, mgr: AppWidgetManager, id: Int, newOptions: android.os.Bundle) =
+        Widgets.renderAll(ctx)
 
     override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) = Widgets.renderAll(ctx)
 
