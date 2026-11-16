@@ -47,6 +47,20 @@ object CalendarRepository {
         if (urlChanged) cacheFile(ctx).delete()
     }
 
+    /** The date tapped in a month widget's grid, which the list beside it starts from; null = default. */
+    fun selectedDay(ctx: Context, widgetId: Int): LocalDate? =
+        prefs(ctx).getLong("selected_$widgetId", Long.MIN_VALUE).takeIf { it != Long.MIN_VALUE }?.let(LocalDate::ofEpochDay)
+
+    fun setSelectedDay(ctx: Context, widgetId: Int, day: LocalDate?) = prefs(ctx).edit().apply {
+        if (day == null) remove("selected_$widgetId") else putLong("selected_$widgetId", day.toEpochDay())
+    }.apply()
+
+    /** Occurrences on [days] days starting at [from], in the device's zone. */
+    fun occurrencesFrom(ctx: Context, from: LocalDate, days: Int): List<Occurrence> {
+        val zone = ZoneId.systemDefault()
+        return occurrences(ctx, from.atStartOfDay(zone), from.plusDays(days.toLong()).atStartOfDay(zone))
+    }
+
     fun monthOffset(ctx: Context, widgetId: Int): Int = prefs(ctx).getInt("month_offset_$widgetId", 0)
     fun setMonthOffset(ctx: Context, widgetId: Int, offset: Int) =
         prefs(ctx).edit().putInt("month_offset_$widgetId", offset).apply()

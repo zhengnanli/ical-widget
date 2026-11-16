@@ -31,7 +31,16 @@ class MonthWidgetProvider : AppWidgetProvider() {
         Widgets.refreshAsync(this, ctx, force = false)
 
     override fun onDeleted(ctx: Context, ids: IntArray) {
-        for (id in ids) CalendarRepository.setMonthOffset(ctx, id, 0)
+        for (id in ids) {
+            CalendarRepository.setMonthOffset(ctx, id, 0)
+            CalendarRepository.setSelectedDay(ctx, id, null)
+        }
+    }
+
+    private fun showMonth(ctx: Context, id: Int, offset: Int) {
+        CalendarRepository.setMonthOffset(ctx, id, offset)
+        CalendarRepository.setSelectedDay(ctx, id, null)
+        Widgets.refreshAsync(this, ctx, false)
     }
 
     override fun onReceive(ctx: Context, intent: Intent) {
@@ -39,9 +48,16 @@ class MonthWidgetProvider : AppWidgetProvider() {
         val offset = CalendarRepository.monthOffset(ctx, id)
         when (intent.action) {
             Widgets.ACTION_REFRESH -> Widgets.refreshAsync(this, ctx, force = true)
-            Widgets.ACTION_PREV_MONTH -> { CalendarRepository.setMonthOffset(ctx, id, offset - 1); Widgets.refreshAsync(this, ctx, false) }
-            Widgets.ACTION_NEXT_MONTH -> { CalendarRepository.setMonthOffset(ctx, id, offset + 1); Widgets.refreshAsync(this, ctx, false) }
-            Widgets.ACTION_THIS_MONTH -> { CalendarRepository.setMonthOffset(ctx, id, 0); Widgets.refreshAsync(this, ctx, false) }
+            Widgets.ACTION_PREV_MONTH -> showMonth(ctx, id, offset - 1)
+            Widgets.ACTION_NEXT_MONTH -> showMonth(ctx, id, offset + 1)
+            Widgets.ACTION_THIS_MONTH -> showMonth(ctx, id, 0)
+            Widgets.ACTION_SELECT_DAY -> {
+                val day = java.time.LocalDate.ofEpochDay(intent.getLongExtra(Widgets.EXTRA_DATE, 0))
+                // Tapping the selected date again goes back to the default list.
+                val current = CalendarRepository.selectedDay(ctx, id)
+                CalendarRepository.setSelectedDay(ctx, id, if (day == current) null else day)
+                Widgets.refreshAsync(this, ctx, false)
+            }
             Intent.ACTION_TIMEZONE_CHANGED, Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_DATE_CHANGED, Intent.ACTION_LOCALE_CHANGED -> Widgets.refreshAsync(this, ctx, false)
             else -> super.onReceive(ctx, intent)

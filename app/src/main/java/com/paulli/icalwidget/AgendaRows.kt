@@ -8,8 +8,17 @@ import java.util.Locale
 
 /** A line in the agenda list: either a day heading or an event under it. */
 sealed class AgendaRow {
-    data class Day(val label: String, val isToday: Boolean) : AgendaRow()
-    data class Event(val title: String, val detail: String, val allDay: Boolean, val colorIndex: Int) : AgendaRow()
+    data class Day(val label: String, val isToday: Boolean, val date: LocalDate) : AgendaRow()
+    data class Event(
+        val title: String,
+        val time: String,
+        val location: String,
+        val allDay: Boolean,
+        val colorIndex: Int,
+        val date: LocalDate,
+    ) : AgendaRow() {
+        val detail: String get() = if (location.isBlank()) time else "$time · $location"
+    }
 }
 
 object AgendaRows {
@@ -21,36 +30,50 @@ object AgendaRows {
     fun colorIndex(title: String): Int = Math.floorMod(title.trim().lowercase().hashCode(), EVENT_COLORS)
 
     /**
-     * Groups occurrences by the days they cover, hiding events that have already ended.
-     * Multi-day events are listed under each day they span.
+     * Groups occurrences by the days they cover, for [days] days starting at [from].
+     * Multi-day events are listed under each day they span. With [hideEnded], today's events that
+     * have already finished are left out.
      */
-    fun build(occurrences: List<Occurrence>, now: ZonedDateTime, days: Int, use24h: Boolean): List<AgendaRow> {
+    fun build(
+        occurrences: List<Occurrence>,
+        now: ZonedDateTime,
+        days: Int,
+        use24h: Boolean,
+        from: LocalDate = now.toLocalDate(),
+        hideEnded: Boolean = true,
+    ): List<AgendaRow> {
         val timeFmt = DateTimeFormatter.ofPattern(if (use24h) "HH:mm" else "h:mm a", Locale.getDefault())
-        val dayFmt = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())
         val today = now.toLocalDate()
-        val live = occurrences.filter { it.end > now || (it.end == it.start && it.start >= now) }
 
         val rows = ArrayList<AgendaRow>()
         for (i in 0 until days) {
-            val day = today.plusDays(i.toLong())
+            val day = from.plusDays(i.toLong())
             val dayStart = day.atStartOfDay(now.zone)
             val dayEnd = day.plusDays(1).atStartOfDay(now.zone)
-            val onDay = live.filter { it.start < dayEnd && (it.end > dayStart || it.start >= dayStart) }
+            val onDay = occurrences.filter {
+                it.start < dayEnd && (it.end > dayStart || it.start >= dayStart) &&
+                    (!hideEnded || day != today || it.end > now || (it.end == it.start && it.start >= now))
+            }
             if (onDay.isEmpty()) continue
 
-            val label = when (i) {
-                0 -> "Today · " + day.format(dayFmt)
-                1 -> "Tomorrow · " + day.format(dayFmt)
-                else -> day.format(dayFmt)
-            }
-            rows.add(AgendaRow.Day(label, i == 0))
+            rows.add(AgendaRow.Day(dayLabel(day, today), day == today, day))
             for (o in onDay) {
-                val time = timeLabel(o, day, now, timeFmt)
-                val detail = if (o.location.isBlank()) time else "$time · ${o.location}"
-                rows.add(AgendaRow.Event(o.title, detail, o.allDay, colorIndex(o.title)))
+                rows.add(AgendaRow.Event(o.title, timeLabel(o, day, now, timeFmt), o.location, o.allDay, colorIndex(o.title), day))
             }
         }
         return rows
+    }
+
+    /** "Today · Sun, Nov 15", "Tomorrow · …", "Yesterday · …", or "Tue, Nov 17" (with the year if not this year). */
+    fun dayLabel(day: LocalDate, today: LocalDate): String {
+        val pattern = if (day.year == today.year) "EEE, MMM d" else "EEE, MMM d, yyyy"
+        val date = day.format(DateTimeFormatter.ofPattern(pattern, Locale.getDefault()))
+        return when (java.time.temporal.ChronoUnit.DAYS.between(today, day)) {
+            0L -> "Today · $date"
+            1L -> "Tomorrow · $date"
+            -1L -> "Yesterday · $date"
+            else -> date
+        }
     }
 
     private fun timeLabel(o: Occurrence, day: LocalDate, now: ZonedDateTime, fmt: DateTimeFormatter): String {

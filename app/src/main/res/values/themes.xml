@@ -5,4 +5,10 @@
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
     </style>
+
+    <style name="DayTheme" parent="android:Theme.Material.Light.Dialog.NoActionBar">
+        <item name="android:windowBackground">@drawable/day_dialog_bg</item>
+        <item name="android:colorAccent">@color/widget_accent</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
+    </style>
 </resources>

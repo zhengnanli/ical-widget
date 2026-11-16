@@ -29,6 +29,8 @@ object Widgets {
     const val ACTION_PREV_MONTH = "com.paulli.icalwidget.PREV_MONTH"
     const val ACTION_NEXT_MONTH = "com.paulli.icalwidget.NEXT_MONTH"
     const val ACTION_THIS_MONTH = "com.paulli.icalwidget.THIS_MONTH"
+    const val ACTION_SELECT_DAY = "com.paulli.icalwidget.SELECT_DAY"
+    const val EXTRA_DATE = "com.paulli.icalwidget.DATE" // epoch day
 
     private fun ids(ctx: Context, cls: Class<*>): IntArray =
         AppWidgetManager.getInstance(ctx).getAppWidgetIds(ComponentName(ctx, cls))
@@ -103,9 +105,23 @@ object Widgets {
 
     // ------------------------------------------------------------------ month widget
 
-    private fun monthViews(ctx: Context, mgr: AppWidgetManager, id: Int, rows: List<AgendaRow>): RemoteViews {
+    private fun monthViews(ctx: Context, mgr: AppWidgetManager, id: Int, todayRows: List<AgendaRow>): RemoteViews {
         val zone = ZoneId.systemDefault()
-        val month = YearMonth.from(LocalDate.now(zone)).plusMonths(CalendarRepository.monthOffset(ctx, id).toLong())
+        val today = LocalDate.now(zone)
+        val month = YearMonth.from(today).plusMonths(CalendarRepository.monthOffset(ctx, id).toLong())
+        val selected = CalendarRepository.selectedDay(ctx, id)
+
+        // The list beside the grid starts at the tapped date, else today (this month) or the 1st (other months).
+        val listFrom = selected ?: if (month == YearMonth.from(today)) today else month.atDay(1)
+        val rows = if (listFrom == today) todayRows else {
+            val days = CalendarRepository.daysAhead(ctx)
+            AgendaRows.build(
+                CalendarRepository.occurrencesFrom(ctx, listFrom, days), java.time.ZonedDateTime.now(zone),
+                days, DateFormat.is24HourFormat(ctx), from = listFrom, hideEnded = false,
+            )
+        }
+        val listTitle = if (listFrom == today) ctx.getString(R.string.upcoming)
+        else listFrom.format(DateTimeFormatter.ofPattern(if (listFrom.year == today.year) "EEE, MMM d" else "MMM d, yyyy", Locale.getDefault()))
         val (gridStart, weeks) = gridOf(month)
 
         // Color of the first event on each day that has one.
@@ -125,16 +141,20 @@ object Widgets {
         // The month grid takes the full width in portrait, and 1.15 / 2.15 of it beside the list in landscape.
         val (portraitW, landscapeW) = widthsDp(mgr, id)
         val buttons = 3 * 36 + 8
-        fun panel(layout: Int, titleSpace: Int) = RemoteViews(ctx.packageName, layout).apply {
-            fillGrid(ctx, this, month, busy, titleSpace)
+        fun panel(layout: Int, titleSpace: Int, sel: LocalDate?, onDay: (LocalDate) -> PendingIntent) =
+            RemoteViews(ctx.packageName, layout).apply {
+            fillGrid(ctx, this, month, busy, titleSpace, sel, onDay)
             setOnClickPendingIntent(R.id.month_title, reset)
             setOnClickPendingIntent(R.id.prev_button, prev)
             setOnClickPendingIntent(R.id.next_button, next)
             setOnClickPendingIntent(R.id.refresh_button, refresh)
         }
 
-        val portrait = panel(R.layout.widget_month, portraitW - 24 - buttons)
-        val landscape = panel(R.layout.widget_month_landscape, ((landscapeW - 24 - 25) * 1.15 / 2.15).toInt() - buttons).apply {
+        // Portrait has no list, so a tapped date opens the day screen; in landscape it moves the list.
+        val portrait = panel(R.layout.widget_month, portraitW - 24 - buttons, null) { openDay(ctx, it) }
+        val landscapeTitle = ((landscapeW - 24 - 25) * 1.15 / 2.15).toInt() - buttons
+        val landscape = panel(R.layout.widget_month_landscape, landscapeTitle, selected) { selectDay(ctx, id, it) }.apply {
+            setTextViewText(R.id.list_title, listTitle)
             setTextViewText(R.id.status_text, statusText(ctx))
             bindList(ctx, this, id, rows)
         }
@@ -145,7 +165,7 @@ object Widgets {
     private fun simpleMonthViews(ctx: Context, mgr: AppWidgetManager, id: Int): RemoteViews {
         val (portraitW, landscapeW) = widthsDp(mgr, id)
         fun v(width: Int) = RemoteViews(ctx.packageName, R.layout.widget_month_simple).apply {
-            fillGrid(ctx, this, YearMonth.now(), busy = null, titleSpace = width - 24 - 4)
+            fillGrid(ctx, this, YearMonth.now(), busy = null, titleSpace = width - 24 - 4, selected = null) { openDay(ctx, it) }
             setOnClickPendingIntent(R.id.month_title, openApp(ctx))
         }
         return RemoteViews(v(landscapeW), v(portraitW))
@@ -174,8 +194,14 @@ object Widgets {
         return gridStart to weeks
     }
 
-    /** Fills a month_panel / month_panel_simple grid. Today's box is filled with the accent color. */
-    private fun fillGrid(ctx: Context, v: RemoteViews, month: YearMonth, busy: Map<LocalDate, Int>?, titleSpace: Int) {
+    /**
+     * Fills a month_panel / month_panel_simple grid. Today's box is filled with the accent color,
+     * [selected] gets an outline, and tapping a date fires [onDay].
+     */
+    private fun fillGrid(
+        ctx: Context, v: RemoteViews, month: YearMonth, busy: Map<LocalDate, Int>?, titleSpace: Int,
+        selected: LocalDate?, onDay: (LocalDate) -> PendingIntent,
+    ) {
         val today = LocalDate.now()
         val (gridStart, weeks) = gridOf(month)
         val firstDow = gridStart.dayOfWeek
@@ -198,7 +224,13 @@ object Widgets {
             }
             v.setTextViewText(MonthIds.days[i], day.dayOfMonth.toString())
             setTextColorRes(ctx, v, MonthIds.days[i], color)
-            v.setInt(MonthIds.boxes[i], "setBackgroundResource", if (isToday) R.drawable.today_box else 0)
+            val box = when {
+                isToday -> R.drawable.today_box
+                day == selected -> R.drawable.selected_box
+                else -> 0
+            }
+            v.setInt(MonthIds.boxes[i], "setBackgroundResource", box)
+            v.setOnClickPendingIntent(MonthIds.boxes[i], onDay(day))
             if (busy != null) {
                 val dotColor = busy[day]
                 v.setViewVisibility(MonthIds.dots[i], if (dotColor != null) View.VISIBLE else View.INVISIBLE)
@@ -215,13 +247,14 @@ object Widgets {
         is AgendaRow.Day -> RemoteViews(ctx.packageName, R.layout.widget_item_day).apply {
             setTextViewText(R.id.day_text, row.label)
             setTextColorRes(ctx, this, R.id.day_text, if (row.isToday) R.color.widget_today_label else R.color.widget_accent)
+            setOnClickFillInIntent(R.id.day_text, Intent().putExtra(EXTRA_DATE, row.date.toEpochDay()))
         }
         is AgendaRow.Event -> RemoteViews(ctx.packageName, R.layout.widget_item_event).apply {
             setTextViewText(R.id.event_title, row.title)
             setTintRes(ctx, this, R.id.event_bar, EVENT_COLOR_RES[row.colorIndex])
             setTextViewText(R.id.event_detail, row.detail)
             setViewVisibility(R.id.event_detail, if (row.detail.isBlank()) View.GONE else View.VISIBLE)
-            setOnClickFillInIntent(R.id.event_root, Intent())
+            setOnClickFillInIntent(R.id.event_root, Intent().putExtra(EXTRA_DATE, row.date.toEpochDay()))
         }
     }
 
@@ -262,11 +295,11 @@ object Widgets {
             views.setRemoteAdapter(R.id.event_list, svc)
         }
         views.setEmptyView(R.id.event_list, R.id.empty_view)
-        // Item taps fill in this template; it must be mutable for the fill-in to apply.
+        // Row taps open the day screen; each row fills in its date. Must be mutable for the fill-in.
         views.setPendingIntentTemplate(
             R.id.event_list,
             PendingIntent.getActivity(
-                ctx, 1, Intent(ctx, MainActivity::class.java),
+                ctx, 1, Intent(ctx, DayActivity::class.java),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
             ),
         )
@@ -280,6 +313,25 @@ object Widgets {
                 .setData(Uri.parse("icalwidget://$action/$id")),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+
+    /** Opens the day screen on [day]. */
+    private fun openDay(ctx: Context, day: LocalDate): PendingIntent = PendingIntent.getActivity(
+        ctx, 0,
+        Intent(ctx, DayActivity::class.java)
+            .putExtra(EXTRA_DATE, day.toEpochDay())
+            .setData(Uri.parse("icalwidget://day/${day.toEpochDay()}")),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    /** Moves a month widget's list to [day]. */
+    private fun selectDay(ctx: Context, id: Int, day: LocalDate): PendingIntent = PendingIntent.getBroadcast(
+        ctx, 0,
+        Intent(ctx, MonthWidgetProvider::class.java).setAction(ACTION_SELECT_DAY)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            .putExtra(EXTRA_DATE, day.toEpochDay())
+            .setData(Uri.parse("icalwidget://select/$id/${day.toEpochDay()}")),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
 
     private fun openApp(ctx: Context): PendingIntent = PendingIntent.getActivity(
         ctx, 0, Intent(ctx, MainActivity::class.java),

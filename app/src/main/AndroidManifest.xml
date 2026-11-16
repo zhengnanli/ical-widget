@@ -19,6 +19,14 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".DayActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:theme="@style/DayTheme" />
+
         <receiver
             android:name=".CalendarWidgetProvider"
             android:exported="true"
