@@ -39,15 +39,15 @@ HEADER_BUTTONS = '''
 
 
 def cell(i, dots, text_size):
-    if dots:
-        inner = f'''
-                <TextView android:id="@+id/c{i}" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:textColor="@color/widget_text" android:textSize="{text_size}" />
-                <ImageView android:id="@+id/d{i}" android:layout_width="5dp" android:layout_height="5dp" android:layout_marginTop="2dp" android:importantForAccessibility="no" android:src="@drawable/event_dot" android:visibility="invisible" />'''
-    else:
-        inner = f'''
-                <TextView android:id="@+id/c{i}" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:textColor="@color/widget_text" android:textSize="{text_size}" />'''
-    return f'''            <LinearLayout android:id="@+id/box{i}" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="1.5dp" android:gravity="center" android:orientation="vertical">{inner}
-            </LinearLayout>'''
+    # The dot is overlaid at the bottom of the cell rather than stacked under the number, so short
+    # rows (a small widget) can't clip it.
+    dot = (f'''
+                <ImageView android:id="@+id/d{i}" android:layout_width="5dp" android:layout_height="5dp" android:layout_gravity="bottom|center_horizontal" android:layout_marginBottom="2dp" android:importantForAccessibility="no" android:src="@drawable/event_dot" android:visibility="invisible" />'''
+           if dots else "")
+    pad = ' android:paddingBottom="4dp"' if dots else ""
+    return f'''            <FrameLayout android:id="@+id/box{i}" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="1.5dp">
+                <TextView android:id="@+id/c{i}" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center"{pad} android:textColor="@color/widget_text" android:textSize="{text_size}" />{dot}
+            </FrameLayout>'''
 
 
 def panel(dots, buttons, text_size, title_size):
@@ -108,7 +108,7 @@ def panel(dots, buttons, text_size, title_size):
 
 
 (RES / "month_panel.xml").write_text(panel(dots=True, buttons=True, text_size="13sp", title_size="18sp"))
-(RES / "month_panel_simple.xml").write_text(panel(dots=False, buttons=False, text_size="15sp", title_size="18sp"))
+(RES / "month_panel_simple.xml").write_text(panel(dots=True, buttons=False, text_size="15sp", title_size="18sp"))
 
 ids = lambda p, n: ", ".join(f"R.id.{p}{i}" for i in range(n))
 KT.write_text(f'''package com.paulli.icalwidget

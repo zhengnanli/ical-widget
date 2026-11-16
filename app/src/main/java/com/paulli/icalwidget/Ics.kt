@@ -20,6 +20,8 @@ data class Occurrence(
     val start: ZonedDateTime,
     val end: ZonedDateTime,
     val allDay: Boolean,
+    /** Part of a series (RRULE/RDATE, or a moved/edited instance of one) rather than a one-off. */
+    val recurring: Boolean = false,
 )
 
 /**
@@ -68,15 +70,16 @@ object Ics {
             val title = ev.text("SUMMARY").ifEmpty { "(No title)" }
             val location = ev.text("LOCATION")
             val duration = eventLength(ev, start, tz)
+            val recurring = ev.get("RRULE") != null || ev.get("RDATE") != null || ev.get("RECURRENCE-ID") != null
 
             fun emit(local: LocalDateTime) {
                 val occ = if (start.allDay) {
                     val s = local.toLocalDate().atStartOfDay(displayZone)
                     val days = (duration as Length.Days).days
-                    Occurrence(title, location, s, s.plusDays(days), true)
+                    Occurrence(title, location, s, s.plusDays(days), true, recurring)
                 } else {
                     val s = local.atZone(start.zone).withZoneSameInstant(displayZone)
-                    Occurrence(title, location, s, s.plus((duration as Length.Exact).d), false)
+                    Occurrence(title, location, s, s.plus((duration as Length.Exact).d), false, recurring)
                 }
                 val si = occ.start.toInstant()
                 val ei = occ.end.toInstant()

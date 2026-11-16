@@ -11,5 +11,5 @@
     <string name="prev_month">Previous month</string>
     <string name="next_month">Next month</string>
     <string name="month_simple_widget_label">Month (simple)</string>
-    <string name="month_simple_widget_description">Just the month, with today highlighted</string>
+    <string name="month_simple_widget_description">This month, with today highlighted and days with events marked</string>
 </resources>

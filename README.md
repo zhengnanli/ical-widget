@@ -8,11 +8,11 @@ Android home-screen widgets for an iCalendar (`.ics` / `webcal://`) subscription
 |---|---|---|
 | **Calendar agenda** | Header + upcoming events grouped by day | Date panel on the left, events on the right |
 | **Month calendar** | Month grid with today highlighted and a dot on days with events; ‹ › to change month, tap the title for this month. Tap a date to open that day | Month grid + events side by side; tap a date to start the list there (tap it again to go back) |
-| **Month (simple)** | Just the month grid with today highlighted; tap a date to open that day | Same |
+| **Month (simple)** | The current month with today highlighted and a dot on days with events; tap a date to open that day | Same |
 
 Tapping a date or an event opens a day view with that day's events (links clickable) and ‹ › to step through days.
 
-Colors follow the system's Material You palette on Android 12+, light and dark. Each event title gets a stable color, so a recurring event always looks the same.
+Colors follow the system's Material You palette on Android 12+, light and dark. Recurring meetings use shades of the primary color and one-time events use shades of the tertiary color. Each title keeps a stable shade, so a given meeting always looks the same.
 
 ## Setup
 

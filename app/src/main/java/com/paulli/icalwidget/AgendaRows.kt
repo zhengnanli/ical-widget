@@ -23,11 +23,16 @@ sealed class AgendaRow {
 
 object AgendaRows {
 
-    /** Number of event colors (R.color.event_0 .. event_5, from the system palette on Android 12+). */
+    /**
+     * Event color slots (R.color.event_0 .. event_5): 0–2 are shades of the primary system color for
+     * recurring events, 3–5 shades of the tertiary color for one-time events.
+     */
     const val EVENT_COLORS = 6
+    private const val SHADES = 3
 
-    /** Stable color slot per event title, so a recurring event always gets the same color. */
-    fun colorIndex(title: String): Int = Math.floorMod(title.trim().lowercase().hashCode(), EVENT_COLORS)
+    /** Recurring vs one-time picks the color family; the title picks a stable shade within it. */
+    fun colorIndex(title: String, recurring: Boolean): Int =
+        (if (recurring) 0 else SHADES) + Math.floorMod(title.trim().lowercase().hashCode(), SHADES)
 
     /**
      * Groups occurrences by the days they cover, for [days] days starting at [from].
@@ -58,7 +63,7 @@ object AgendaRows {
 
             rows.add(AgendaRow.Day(dayLabel(day, today), day == today, day))
             for (o in onDay) {
-                rows.add(AgendaRow.Event(o.title, timeLabel(o, day, now, timeFmt), o.location, o.allDay, colorIndex(o.title), day))
+                rows.add(AgendaRow.Event(o.title, timeLabel(o, day, now, timeFmt), o.location, o.allDay, colorIndex(o.title, o.recurring), day))
             }
         }
         return rows

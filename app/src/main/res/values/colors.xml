@@ -9,12 +9,13 @@
     <color name="widget_on_accent">#FFFFFF</color>
     <color name="widget_weekend">#E5484D</color>
     <color name="widget_today_label">#E5484D</color>
+    <!-- event_0..2: recurring events; event_3..5: one-time events -->
     <color name="event_0">#4F46E5</color>
-    <color name="event_1">#EC4899</color>
-    <color name="event_2">#0EA5E9</color>
-    <color name="event_3">#10B981</color>
+    <color name="event_1">#0EA5E9</color>
+    <color name="event_2">#14B8A6</color>
+    <color name="event_3">#EC4899</color>
     <color name="event_4">#F59E0B</color>
-    <color name="event_5">#8B5CF6</color>
+    <color name="event_5">#EF4444</color>
     <color name="panel_start">#4F46E5</color>
     <color name="panel_end">#7C3AED</color>
     <color name="panel_text">#FFFFFF</color>

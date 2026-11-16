@@ -65,18 +65,19 @@ class MonthWidgetProvider : AppWidgetProvider() {
     }
 }
 
-/** Plain month grid: current month, today highlighted, no events. */
+/** Plain month grid: current month, today highlighted, a dot on days with events. */
 class SimpleMonthWidgetProvider : AppWidgetProvider() {
 
     override fun onAppWidgetOptionsChanged(ctx: Context, mgr: AppWidgetManager, id: Int, newOptions: android.os.Bundle) =
         Widgets.renderAll(ctx)
 
-    override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) = Widgets.renderAll(ctx)
+    override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) =
+        Widgets.refreshAsync(this, ctx, force = false)
 
     override fun onReceive(ctx: Context, intent: Intent) {
         when (intent.action) {
             Intent.ACTION_TIMEZONE_CHANGED, Intent.ACTION_TIME_CHANGED,
-            Intent.ACTION_DATE_CHANGED, Intent.ACTION_LOCALE_CHANGED -> Widgets.renderAll(ctx)
+            Intent.ACTION_DATE_CHANGED, Intent.ACTION_LOCALE_CHANGED -> Widgets.refreshAsync(this, ctx, force = false)
             else -> super.onReceive(ctx, intent)
         }
     }

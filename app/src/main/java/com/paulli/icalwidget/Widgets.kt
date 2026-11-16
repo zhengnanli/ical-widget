@@ -122,16 +122,7 @@ object Widgets {
         }
         val listTitle = if (listFrom == today) ctx.getString(R.string.upcoming)
         else listFrom.format(DateTimeFormatter.ofPattern(if (listFrom.year == today.year) "EEE, MMM d" else "MMM d, yyyy", Locale.getDefault()))
-        val (gridStart, weeks) = gridOf(month)
-
-        // Color of the first event on each day that has one.
-        val busy = HashMap<LocalDate, Int>()
-        val gridEnd = gridStart.plusDays(weeks * 7L)
-        for (o in CalendarRepository.occurrences(ctx, gridStart.atStartOfDay(zone), gridEnd.atStartOfDay(zone))) {
-            var d = o.start.toLocalDate()
-            val last = if (o.end > o.start && o.end.toLocalTime() == LocalTime.MIDNIGHT) o.end.toLocalDate().minusDays(1) else o.end.toLocalDate()
-            while (d <= last && d < gridEnd) { busy.putIfAbsent(d, EVENT_COLOR_RES[AgendaRows.colorIndex(o.title)]); d = d.plusDays(1) }
-        }
+        val busy = busyDays(ctx, month)
 
         val prev = broadcast(ctx, MonthWidgetProvider::class.java, ACTION_PREV_MONTH, id)
         val next = broadcast(ctx, MonthWidgetProvider::class.java, ACTION_NEXT_MONTH, id)
@@ -161,11 +152,27 @@ object Widgets {
         return RemoteViews(landscape, portrait)
     }
 
-    /** The plain month: always the current month, no events. */
+    /** Color resource of the first event on each grid day that has one. */
+    private fun busyDays(ctx: Context, month: YearMonth): Map<LocalDate, Int> {
+        val zone = ZoneId.systemDefault()
+        val (gridStart, weeks) = gridOf(month)
+        val gridEnd = gridStart.plusDays(weeks * 7L)
+        val busy = HashMap<LocalDate, Int>()
+        for (o in CalendarRepository.occurrences(ctx, gridStart.atStartOfDay(zone), gridEnd.atStartOfDay(zone))) {
+            var d = o.start.toLocalDate()
+            val last = if (o.end > o.start && o.end.toLocalTime() == LocalTime.MIDNIGHT) o.end.toLocalDate().minusDays(1) else o.end.toLocalDate()
+            while (d <= last && d < gridEnd) { busy.putIfAbsent(d, EVENT_COLOR_RES[AgendaRows.colorIndex(o.title, o.recurring)]); d = d.plusDays(1) }
+        }
+        return busy
+    }
+
+    /** The plain month: always the current month, with a dot on days that have events. */
     private fun simpleMonthViews(ctx: Context, mgr: AppWidgetManager, id: Int): RemoteViews {
         val (portraitW, landscapeW) = widthsDp(mgr, id)
+        val month = YearMonth.now()
+        val busy = busyDays(ctx, month)
         fun v(width: Int) = RemoteViews(ctx.packageName, R.layout.widget_month_simple).apply {
-            fillGrid(ctx, this, YearMonth.now(), busy = null, titleSpace = width - 24 - 4, selected = null) { openDay(ctx, it) }
+            fillGrid(ctx, this, month, busy, titleSpace = width - 24 - 4, selected = null) { openDay(ctx, it) }
             setOnClickPendingIntent(R.id.month_title, openApp(ctx))
         }
         return RemoteViews(v(landscapeW), v(portraitW))

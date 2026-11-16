@@ -56,6 +56,9 @@ class IcsTest {
         )
         assertEquals(50, java.time.Duration.between(occ[0].start, occ[0].end).toMinutes())
         assertEquals("Room 101", occ[0].location)
+        // The series and its moved instance are both recurring, so they share the recurring color family.
+        assertEquals(true, occ.all { it.recurring })
+        assertEquals(true, occ.all { AgendaRows.colorIndex(it.title, it.recurring) < 3 })
     }
 
     @Test fun biweeklyHonoursWkst() {
@@ -120,6 +123,8 @@ class IcsTest {
         val occ = expand(text, LocalDate.of(2026, 10, 30), 1)
         assertEquals(listOf("Conference", "Call"), occ.map { it.title })
         assertEquals(true, occ[0].allDay)
+        assertEquals(false, occ.any { it.recurring })
+        assertEquals(true, occ.all { AgendaRows.colorIndex(it.title, it.recurring) >= 3 })
         assertEquals(LocalDateTime.of(2026, 10, 30, 10, 0), occ[1].start.toLocalDateTime())
 
         val rows = AgendaRows.build(occ, ZonedDateTime.of(2026, 10, 30, 8, 0, 0, 0, chicago), 1, false)
